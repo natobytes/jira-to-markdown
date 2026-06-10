@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://natobytes.com/jira-to-markdown/sitemap.xml
