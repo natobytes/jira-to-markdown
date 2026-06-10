@@ -1,0 +1,760 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Jira → Markdown</title>
+<style>
+  :root {
+    --ink: #14181f;
+    --ink-soft: #5a6573;
+    --paper: #eceae3;
+    --panel: #f7f6f1;
+    --rule: #d4d1c6;
+    --jira: #2563b8;
+    --jira-soft: #e4edf9;
+    --md: #1f7a4d;
+    --md-soft: #e1f1e8;
+    --code-bg: #f0eee7;
+    --mono: "SFMono-Regular", "JetBrains Mono", Menlo, Consolas, monospace;
+    --sans: "Inter", system-ui, -apple-system, sans-serif;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; }
+  body {
+    font-family: var(--sans);
+    background: var(--paper);
+    color: var(--ink);
+    -webkit-font-smoothing: antialiased;
+    display: flex;
+    flex-direction: column;
+    min-height: 100vh;
+  }
+
+  header {
+    padding: 22px 28px 18px;
+    border-bottom: 1px solid var(--rule);
+    display: flex;
+    align-items: baseline;
+    gap: 16px;
+    flex-wrap: wrap;
+  }
+  .wordmark {
+    font-family: var(--mono);
+    font-size: 15px;
+    font-weight: 600;
+    letter-spacing: -0.02em;
+    display: flex;
+    align-items: center;
+    gap: 9px;
+  }
+  .tag {
+    font-size: 11px;
+    padding: 2px 7px;
+    border-radius: 3px;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+  }
+  .tag.j { background: var(--jira-soft); color: var(--jira); }
+  .tag.m { background: var(--md-soft); color: var(--md); }
+  .arrow { color: var(--ink-soft); font-size: 13px; }
+  .sub { font-size: 12.5px; color: var(--ink-soft); margin-left: auto; }
+
+  main {
+    flex: 1;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    min-height: 0;
+  }
+  .pane {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    min-width: 0;
+  }
+  .pane:first-child { border-right: 1px solid var(--rule); }
+  .pane-head {
+    padding: 9px 20px;
+    font-family: var(--mono);
+    font-size: 11.5px;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--ink-soft);
+    background: var(--panel);
+    border-bottom: 1px solid var(--rule);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+  }
+  .pane-head .label { display: flex; align-items: center; }
+  .dot { width: 7px; height: 7px; border-radius: 50%; display: inline-block; margin-right: 8px; }
+  .dot.j { background: var(--jira); }
+  .dot.m { background: var(--md); }
+  .head-actions { display: flex; gap: 6px; align-items: center; }
+
+  .seg {
+    display: inline-flex;
+    border: 1px solid var(--rule);
+    border-radius: 6px;
+    overflow: hidden;
+    background: var(--paper);
+  }
+  .seg button {
+    font-family: var(--sans);
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0;
+    text-transform: none;
+    padding: 4px 10px;
+    border: 0;
+    background: transparent;
+    color: var(--ink-soft);
+    cursor: pointer;
+  }
+  .seg button + button { border-left: 1px solid var(--rule); }
+  .seg button.on { background: var(--ink); color: var(--paper); }
+
+  textarea {
+    flex: 1;
+    border: 0;
+    outline: 0;
+    resize: none;
+    padding: 20px;
+    font-family: var(--mono);
+    font-size: 13.5px;
+    line-height: 1.65;
+    background: transparent;
+    color: var(--ink);
+    width: 100%;
+    overflow: auto;
+  }
+  textarea::placeholder { color: #a8a399; }
+
+  .view { flex: 1; overflow: auto; min-height: 0; }
+  .src {
+    padding: 20px;
+    font-family: var(--mono);
+    font-size: 13.5px;
+    line-height: 1.65;
+    white-space: pre-wrap;
+    word-break: break-word;
+    tab-size: 2;
+  }
+  .src:empty::before, .rendered:empty::before {
+    content: attr(data-empty);
+    color: #a8a399;
+    font-family: var(--mono);
+    font-size: 13.5px;
+  }
+  .hidden { display: none !important; }
+
+  .rendered { padding: 22px 24px; font-size: 14.5px; line-height: 1.7; }
+  .rendered h1, .rendered h2, .rendered h3,
+  .rendered h4, .rendered h5, .rendered h6 {
+    line-height: 1.3; margin: 1.1em 0 .5em; font-weight: 650;
+  }
+  .rendered h1 { font-size: 1.6em; border-bottom: 1px solid var(--rule); padding-bottom: .25em; }
+  .rendered h2 { font-size: 1.32em; }
+  .rendered h3 { font-size: 1.14em; }
+  .rendered h4 { font-size: 1em; }
+  .rendered > :first-child { margin-top: 0; }
+  .rendered p { margin: 0 0 .8em; }
+  .rendered ul, .rendered ol { margin: 0 0 .8em; padding-left: 1.5em; }
+  .rendered li { margin: .15em 0; }
+  .rendered li > ul, .rendered li > ol { margin: .15em 0; }
+  .rendered a { color: var(--jira); text-underline-offset: 2px; }
+  .rendered strong { font-weight: 680; }
+  .rendered del { color: var(--ink-soft); }
+  .rendered code {
+    font-family: var(--mono); font-size: .86em;
+    background: var(--code-bg); padding: .12em .4em; border-radius: 4px;
+  }
+  .rendered pre {
+    background: var(--code-bg); border: 1px solid var(--rule);
+    border-radius: 8px; padding: 14px 16px; overflow: auto; margin: 0 0 .9em;
+  }
+  .rendered pre code { background: none; padding: 0; font-size: 13px; line-height: 1.55; }
+  .rendered blockquote {
+    border-left: 3px solid var(--rule); margin: 0 0 .9em;
+    padding: .1em 0 .1em 1em; color: var(--ink-soft);
+  }
+  .rendered blockquote p { margin: .35em 0; }
+  .rendered hr { border: 0; border-top: 1px solid var(--rule); margin: 1.4em 0; }
+  .rendered table { border-collapse: collapse; margin: 0 0 1em; font-size: 13.5px; }
+  .rendered th, .rendered td { border: 1px solid var(--rule); padding: 6px 11px; text-align: left; }
+  .rendered th { background: var(--panel); font-weight: 650; }
+  .rendered img { max-width: 100%; border-radius: 6px; }
+
+  .btn {
+    font-family: var(--sans); font-size: 11px; font-weight: 600;
+    padding: 4px 10px; border: 1px solid var(--rule);
+    background: var(--paper); color: var(--ink);
+    border-radius: 6px; cursor: pointer; text-transform: none; letter-spacing: 0;
+    transition: background .12s, border-color .12s;
+  }
+  .btn:hover { background: #e3e0d8; }
+  .btn.done { border-color: var(--md); color: var(--md); background: var(--md-soft); }
+
+  footer {
+    padding: 10px 28px; border-top: 1px solid var(--rule);
+    font-size: 11.5px; color: var(--ink-soft); background: var(--panel);
+    display: flex; gap: 18px; flex-wrap: wrap; align-items: center;
+  }
+  footer code {
+    font-family: var(--mono); background: var(--paper);
+    padding: 1px 5px; border-radius: 3px; border: 1px solid var(--rule); font-size: 11px;
+  }
+  .ex { cursor: pointer; text-decoration: underline; text-underline-offset: 2px; }
+  .ex:hover { color: var(--ink); }
+
+  @media (max-width: 760px) {
+    main { grid-template-columns: 1fr; grid-template-rows: 1fr 1fr; }
+    .pane:first-child { border-right: 0; border-bottom: 1px solid var(--rule); }
+    .sub { display: none; }
+  }
+</style>
+</head>
+<body>
+  <header>
+    <div class="wordmark">
+      <span class="tag j">Jira</span>
+      <span class="arrow">→</span>
+      <span class="tag m">Markdown</span>
+    </div>
+    <span class="sub">Wiki markup converter · runs entirely in your browser</span>
+  </header>
+
+  <main>
+    <section class="pane">
+      <div class="pane-head">
+        <span class="label"><span class="dot j"></span>Jira wiki markup</span>
+        <div class="head-actions">
+          <div class="seg" data-side="jira">
+            <button data-mode="src" class="on">Source</button>
+            <button data-mode="preview">Preview</button>
+          </div>
+          <button class="btn" id="clear">Clear</button>
+        </div>
+      </div>
+      <textarea id="in" spellcheck="false" placeholder="Paste a Jira ticket here — copy straight from the ticket and paste; formatting is detected automatically. Or type wiki markup (h1., *bold*, ||header||)."></textarea>
+      <div class="view hidden" id="jiraPreview">
+        <div class="rendered" id="jiraRendered" data-empty="Jira preview appears here."></div>
+      </div>
+    </section>
+
+    <section class="pane">
+      <div class="pane-head">
+        <span class="label"><span class="dot m"></span>Markdown</span>
+        <div class="head-actions">
+          <div class="seg" data-side="md">
+            <button data-mode="src">Source</button>
+            <button data-mode="preview" class="on">Preview</button>
+          </div>
+          <button class="btn" id="copy">Copy</button>
+        </div>
+      </div>
+      <div class="view hidden" id="mdSrcView">
+        <div class="src" id="mdSrc" data-empty="Markdown source appears here as you type."></div>
+      </div>
+      <div class="view" id="mdPreview">
+        <div class="rendered" id="mdRendered" data-empty="Markdown preview appears here."></div>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <span>Paste a formatted ticket <em>or</em> wiki markup · headings · <code>*bold*</code> · lists · tables · <code>{code}</code> · links · quotes</span>
+    <span class="ex" id="loadex">Load example</span>
+  </footer>
+
+<script>
+(function () {
+  "use strict";
+
+  /* ───────── Jira → Markdown ───────── */
+  let PH = [];
+  function stash(html) { PH.push(html); return "\u0000" + (PH.length - 1) + "\u0000"; }
+  function restore(t) { return t.replace(/\u0000(\d+)\u0000/g, (_, i) => PH[+i]); }
+  function escPipe(s) { return s.replace(/\|/g, "\\|"); }
+
+  function inline(text) {
+    text = text.replace(/\{\{([^}]+)\}\}/g, (_, c) => stash("`" + c + "`"));
+    text = text.replace(/\[([^\]|]+)\|([^\]]+)\]/g, (_, t, u) => stash("[" + t.trim() + "](" + u.trim() + ")"));
+    text = text.replace(/\[([^\]]+)\]/g, (_, u) => {
+      u = u.trim();
+      if (/^#/.test(u)) return stash("[" + u.slice(1) + "](" + u + ")");
+      return stash("<" + u + ">");
+    });
+    text = text.replace(/!([^!\s|]+)(\|[^!]*)?!/g, (_, src) => stash("![](" + src + ")"));
+    text = text.replace(/(^|\W)\*([^*]+)\*(?=\W|$)/g, (_, p, c) => p + "**" + c + "**");
+    text = text.replace(/(^|\W)_([^_]+)_(?=\W|$)/g, (_, p, c) => p + "*" + c + "*");
+    text = text.replace(/(^|\W)\+([^+]+)\+(?=\W|$)/g, (_, p, c) => p + "**" + c + "**");
+    // strikethrough -text- → protect as placeholder so later ~ rule can't touch it
+    text = text.replace(/(^|\s)-([^-\s][^-]*?)-(?=\s|$)/g, (_, p, c) => p + stash("~~" + c + "~~"));
+    text = text.replace(/\^([^^]+)\^/g, (_, c) => stash("<sup>" + c + "</sup>"));
+    text = text.replace(/~([^~\s][^~]*?)~/g, (_, c) => stash("<sub>" + c + "</sub>"));
+    text = text.replace(/\{color:[^}]*\}([\s\S]*?)\{color\}/g, "$1");
+    return text;
+  }
+
+  function jiraToMd(src) {
+    PH = [];
+    const lines = src.replace(/\r\n?/g, "\n").split("\n");
+    const out = [];
+    let i = 0;
+    while (i < lines.length) {
+      let line = lines[i];
+
+      const codeOpen = line.match(/^\s*\{(code|noformat)(?::([^}]*))?\}\s*$/i);
+      if (codeOpen) {
+        let lang = "";
+        if (codeOpen[2]) {
+          const m = codeOpen[2].match(/(?:^|[|:])\s*([a-zA-Z0-9#+]+)\s*$/) ||
+                    codeOpen[2].match(/language=([a-zA-Z0-9#+]+)/i) ||
+                    codeOpen[2].match(/^([a-zA-Z0-9#+]+)/);
+          if (m) lang = m[1];
+        }
+        const buf = []; i++;
+        while (i < lines.length && !/^\s*\{(code|noformat)\}\s*$/i.test(lines[i])) { buf.push(lines[i]); i++; }
+        i++;
+        out.push("```" + lang); out.push(...buf); out.push("```");
+        continue;
+      }
+
+      const panelOpen = line.match(/^\s*\{(quote|panel|info|note|warning|tip|expand)(?::[^}]*)?\}\s*$/i);
+      if (panelOpen) {
+        const kind = panelOpen[1].toLowerCase();
+        const close = new RegExp("^\\s*\\{" + kind + "\\}\\s*$", "i");
+        const buf = []; i++;
+        while (i < lines.length && !close.test(lines[i])) { buf.push(lines[i]); i++; }
+        i++;
+        const label = { info: "ℹ️ ", note: "📝 ", warning: "⚠️ ", tip: "💡 " }[kind] || "";
+        const inner = jiraToMd(buf.join("\n")).split("\n");
+        if (label) out.push("> " + label + (inner.shift() || "").replace(/^>\s?/, ""));
+        inner.forEach(l => out.push("> " + l));
+        continue;
+      }
+
+      if (/^\s*\|\|/.test(line) || (/^\s*\|/.test(line) && /\|\s*$/.test(line.trim()))) {
+        const rows = [];
+        const isHeaderRow = (l) => /^\s*\|\|/.test(l);
+        while (i < lines.length && /^\s*\|/.test(lines[i]) && lines[i].trim() !== "") {
+          const raw = lines[i].trim();
+          const header = isHeaderRow(raw);
+          const cells = raw.replace(/^\s*\|+/, "").replace(/\|+\s*$/, "")
+            .split(header ? /\|\|/ : /(?<!\\)\|/)
+            .map(c => escPipe(restore(inline(c.trim()))));
+          rows.push({ header, cells }); i++;
+        }
+        const colCount = Math.max(...rows.map(r => r.cells.length));
+        let headerCells = null; const bodyRows = [];
+        rows.forEach(r => {
+          while (r.cells.length < colCount) r.cells.push("");
+          if (r.header && !headerCells) headerCells = r.cells; else bodyRows.push(r.cells);
+        });
+        if (!headerCells) headerCells = new Array(colCount).fill("");
+        out.push("| " + headerCells.join(" | ") + " |");
+        out.push("| " + new Array(colCount).fill("---").join(" | ") + " |");
+        bodyRows.forEach(r => out.push("| " + r.join(" | ") + " |"));
+        continue;
+      }
+
+      const h = line.match(/^\s*h([1-6])\.\s+(.*)$/i);
+      if (h) { out.push("#".repeat(+h[1]) + " " + restore(inline(h[2].trim()))); i++; continue; }
+
+      if (/^\s*----+\s*$/.test(line)) { out.push("---"); i++; continue; }
+
+      const li = line.match(/^\s*([*#-]+)\s+(.*)$/);
+      if (li && /^[*#-]+$/.test(li[1])) {
+        const marks = li[1];
+        const depth = marks.length - 1;
+        const ordered = marks[marks.length - 1] === "#";
+        out.push("  ".repeat(depth) + (ordered ? "1." : "-") + " " + restore(inline(li[2].trim())));
+        i++; continue;
+      }
+
+      const bq = line.match(/^\s*bq\.\s+(.*)$/i);
+      if (bq) { out.push("> " + restore(inline(bq[1].trim()))); i++; continue; }
+
+      if (line.trim() === "") { out.push(""); i++; continue; }
+      out.push(restore(inline(line))); i++;
+    }
+    return out.join("\n").replace(/\n{3,}/g, "\n\n").trim();
+  }
+
+  /* ───────── Markdown → HTML (tiny renderer) ───────── */
+  function esc(s) { return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;"); }
+
+  function mdInline(s) {
+    const codes = [];
+    s = s.replace(/`([^`]+)`/g, (_, c) => { codes.push(c); return "\u0001" + (codes.length - 1) + "\u0001"; });
+    s = s.replace(/!\[([^\]]*)\]\(([^)]+)\)/g, (_, a, u) => '<img alt="' + a + '" src="' + u + '">');
+    s = s.replace(/\[([^\]]+)\]\(([^)]+)\)/g, (_, t, u) => '<a href="' + u + '" target="_blank" rel="noopener">' + t + '</a>');
+    s = s.replace(/&lt;(https?:[^\s&]+)&gt;/g, (_, u) => '<a href="' + u + '" target="_blank" rel="noopener">' + u + '</a>');
+    s = s.replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>");
+    s = s.replace(/(^|[^*])\*([^*]+)\*(?!\*)/g, "$1<em>$2</em>");
+    s = s.replace(/(^|[^_])_([^_]+)_/g, "$1<em>$2</em>");
+    s = s.replace(/~~([^~]+)~~/g, "<del>$1</del>");
+    s = s.replace(/\u0001(\d+)\u0001/g, (_, i) => "<code>" + codes[+i] + "</code>");
+    return s;
+  }
+
+  function mdToHtml(md) {
+    const lines = md.replace(/\r\n?/g, "\n").split("\n");
+    let html = "";
+    let i = 0;
+
+    function parseList(indent) {
+      const reItem = /^(\s*)([-*+]|\d+\.)\s+(.*)$/;
+      let m = lines[i] && lines[i].match(reItem);
+      if (!m) return "";
+      const ordered = /\d/.test(m[2]);
+      let buf = "<" + (ordered ? "ol" : "ul") + ">";
+      while (i < lines.length) {
+        m = lines[i].match(reItem);
+        if (!m) break;
+        const ind = m[1].length;
+        if (ind < indent) break;
+        if (ind > indent) { buf += parseList(ind); continue; }
+        // same indent but marker type flipped → this list ends, let caller start a new one
+        if (/\d/.test(m[2]) !== ordered) break;
+        let item = mdInline(esc(m[3]));
+        i++;
+        const next = lines[i] && lines[i].match(reItem);
+        if (next && next[1].length > indent) item += parseList(next[1].length);
+        buf += "<li>" + item + "</li>";
+      }
+      buf += ordered ? "</ol>" : "</ul>";
+      return buf;
+    }
+
+    while (i < lines.length) {
+      let line = lines[i];
+
+      const fence = line.match(/^```(.*)$/);
+      if (fence) {
+        const buf = []; i++;
+        while (i < lines.length && !/^```\s*$/.test(lines[i])) { buf.push(lines[i]); i++; }
+        i++;
+        html += "<pre><code>" + esc(buf.join("\n")) + "</code></pre>";
+        continue;
+      }
+
+      const h = line.match(/^(#{1,6})\s+(.*)$/);
+      if (h) { const n = h[1].length; html += "<h" + n + ">" + mdInline(esc(h[2])) + "</h" + n + ">"; i++; continue; }
+
+      if (/^(\s*)(---+|\*\*\*+|___+)\s*$/.test(line)) { html += "<hr>"; i++; continue; }
+
+      if (/^\s*>/.test(line)) {
+        const buf = [];
+        while (i < lines.length && /^\s*>/.test(lines[i])) { buf.push(lines[i].replace(/^\s*>\s?/, "")); i++; }
+        html += "<blockquote>" + mdToHtml(buf.join("\n")) + "</blockquote>";
+        continue;
+      }
+
+      if (/^\s*\|.*\|\s*$/.test(line) && lines[i + 1] && /^\s*\|?[\s:|-]+\|?\s*$/.test(lines[i + 1])) {
+        const splitRow = (r) => r.trim().replace(/^\|/, "").replace(/\|$/, "")
+          .split(/(?<!\\)\|/).map(c => c.replace(/\\\|/g, "|").trim());
+        const header = splitRow(lines[i]); i += 2;
+        let t = "<table><thead><tr>" + header.map(c => "<th>" + mdInline(esc(c)) + "</th>").join("") + "</tr></thead><tbody>";
+        while (i < lines.length && /^\s*\|.*\|\s*$/.test(lines[i])) {
+          const cells = splitRow(lines[i]);
+          t += "<tr>" + cells.map(c => "<td>" + mdInline(esc(c)) + "</td>").join("") + "</tr>";
+          i++;
+        }
+        t += "</tbody></table>";
+        html += t;
+        continue;
+      }
+
+      if (/^(\s*)([-*+]|\d+\.)\s+/.test(line)) { html += parseList(0); continue; }
+
+      if (line.trim() === "") { i++; continue; }
+
+      const buf = [];
+      while (i < lines.length && lines[i].trim() !== "" &&
+             !/^```/.test(lines[i]) && !/^#{1,6}\s/.test(lines[i]) &&
+             !/^\s*>/.test(lines[i]) && !/^(\s*)([-*+]|\d+\.)\s+/.test(lines[i]) &&
+             !/^(\s*)(---+|\*\*\*+|___+)\s*$/.test(lines[i])) {
+        buf.push(lines[i]); i++;
+      }
+      html += "<p>" + mdInline(esc(buf.join("\n"))).replace(/\n/g, "<br>") + "</p>";
+    }
+    return html;
+  }
+
+  /* ───────── HTML (rich paste) → Markdown ───────── */
+  function htmlToMd(html) {
+    // Parse in a detached document so scripts don't run.
+    const doc = new DOMParser().parseFromString(html, "text/html");
+
+    // Strip Jira/Confluence wrapper noise.
+    doc.querySelectorAll("style,script,meta,link").forEach(n => n.remove());
+
+    function inlineText(node) {
+      // collapse whitespace the way HTML does
+      return walk(node).replace(/[ \t]*\n[ \t]*/g, " ").replace(/[ \t]{2,}/g, " ");
+    }
+
+    function walk(node) {
+      let out = "";
+      node.childNodes.forEach(child => { out += render(child); });
+      return out;
+    }
+
+    function fence(el) {
+      const code = el.textContent.replace(/\n$/, "");
+      const cls = (el.querySelector("code") || el).className || el.className || "";
+      const m = cls.match(/(?:language-|brush:\s*|lang-)([a-z0-9#+]+)/i);
+      const lang = m ? m[1] : "";
+      return "\n```" + lang + "\n" + code + "\n```\n";
+    }
+
+    function table(el) {
+      const rows = [...el.querySelectorAll("tr")];
+      if (!rows.length) return "";
+      const cells = rows.map(tr =>
+        [...tr.children].map(td => inlineText(td).trim().replace(/\|/g, "\\|") || " ")
+      );
+      // header = first row, or row containing <th>
+      let headerIdx = rows.findIndex(tr => tr.querySelector("th"));
+      if (headerIdx < 0) headerIdx = 0;
+      const cols = Math.max(...cells.map(r => r.length));
+      cells.forEach(r => { while (r.length < cols) r.push(" "); });
+      const header = cells[headerIdx];
+      const body = cells.filter((_, i) => i !== headerIdx);
+      let md = "\n| " + header.join(" | ") + " |\n";
+      md += "| " + new Array(cols).fill("---").join(" | ") + " |\n";
+      body.forEach(r => { md += "| " + r.join(" | ") + " |\n"; });
+      return md + "\n";
+    }
+
+    function list(el, ordered, depth) {
+      let md = (depth === 0 ? "\n" : "");
+      let n = 1;
+      [...el.children].forEach(li => {
+        if (li.tagName !== "LI") return;
+        const indent = "  ".repeat(depth);
+        const marker = ordered ? (n++ + ".") : "-";
+        const nested = [...li.children].filter(c => c.tagName === "UL" || c.tagName === "OL");
+        const clone = li.cloneNode(true);
+        [...clone.children].forEach(c => { if (c.tagName === "UL" || c.tagName === "OL") c.remove(); });
+        const text = inlineText(clone).trim().replace(/\n+/g, " ");
+        md += indent + marker + " " + text + "\n";
+        nested.forEach(sub => { md += list(sub, sub.tagName === "OL", depth + 1).replace(/^\n/, ""); });
+      });
+      return md + (depth === 0 ? "\n" : "");
+    }
+
+    function render(node) {
+      if (node.nodeType === 3) {
+        // HTML collapses runs of whitespace to a single space — except in <pre>.
+        const raw = node.nodeValue;
+        if (node.parentElement && node.parentElement.closest("pre")) return raw;
+        return raw.replace(/\s+/g, " ");
+      }
+      if (node.nodeType !== 1) return "";                    // skip comments etc.
+      const tag = node.tagName.toLowerCase();
+
+      switch (tag) {
+        case "br": return "  \n";
+        case "hr": return "\n---\n";
+        case "h1": case "h2": case "h3":
+        case "h4": case "h5": case "h6":
+          return "\n" + "#".repeat(+tag[1]) + " " + inlineText(node).trim() + "\n\n";
+        case "p": case "div": {
+          const t = walk(node).trim();
+          return t ? "\n" + t + "\n\n" : "";
+        }
+        case "strong": case "b": {
+          const t = inlineText(node).trim(); return t ? "**" + t + "**" : "";
+        }
+        case "em": case "i": {
+          const t = inlineText(node).trim(); return t ? "*" + t + "*" : "";
+        }
+        case "del": case "strike": case "s": {
+          const t = inlineText(node).trim(); return t ? "~~" + t + "~~" : "";
+        }
+        case "code":
+          // inline code only (pre handled separately)
+          return node.closest("pre") ? node.textContent : "`" + node.textContent + "`";
+        case "pre": return fence(node);
+        case "a": {
+          const href = node.getAttribute("href") || "";
+          const t = inlineText(node).trim() || href;
+          return href ? "[" + t + "](" + href + ")" : t;
+        }
+        case "img": {
+          const src = node.getAttribute("src") || "";
+          const alt = node.getAttribute("alt") || "";
+          return src ? "![" + alt + "](" + src + ")" : "";
+        }
+        case "ul": return list(node, false, 0);
+        case "ol": return list(node, true, 0);
+        case "li": return walk(node); // handled by list(), fallback
+        case "blockquote": {
+          const inner = walk(node).trim().split("\n").map(l => "> " + l).join("\n");
+          return "\n" + inner + "\n\n";
+        }
+        case "table": return table(node);
+        case "tr": case "td": case "th": case "thead": case "tbody":
+          return walk(node);
+        case "span": case "font": case "u": case "small": case "sub": case "sup":
+        default:
+          return walk(node);
+      }
+    }
+
+    let md = walk(doc.body);
+    // tidy: collapse 3+ newlines, trim trailing spaces on blank lines
+    md = md.replace(/[ \t]+\n/g, m => (m.trim() === "" ? "\n" : m))
+           .replace(/\n{3,}/g, "\n\n")
+           .replace(/^\s+|\s+$/g, "");
+    return md;
+  }
+
+  // Heuristic: does this pasted HTML carry real formatting worth converting?
+  function htmlHasFormatting(html) {
+    return /<(h[1-6]|strong|b|em|i|ul|ol|li|table|tr|td|th|pre|code|blockquote|a|img|hr|del|s)\b/i.test(html);
+  }
+
+  /* ───────── wiring ───────── */
+  const inEl = document.getElementById("in");
+  const mdSrc = document.getElementById("mdSrc");
+  const mdRendered = document.getElementById("mdRendered");
+  const jiraRendered = document.getElementById("jiraRendered");
+
+  // When a rich paste happens we already have Markdown in the box,
+  // so we must NOT run it through the wiki-markup converter again.
+  let inputIsMarkdown = false;
+
+  let currentMd = "";
+
+  function run() {
+    const raw = inEl.value;
+    const has = raw.trim() !== "";
+    const md = inputIsMarkdown ? raw : jiraToMd(raw);
+    currentMd = md;
+    mdSrc.textContent = md;
+    mdRendered.innerHTML = has ? mdToHtml(md) : "";
+    jiraRendered.innerHTML = has ? mdToHtml(md) : "";
+  }
+
+  // Typing in the box means the user is editing wiki markup (or hand-writing
+  // markdown that's close enough); treat as wiki markup unless a rich paste set the flag.
+  inEl.addEventListener("input", () => {
+    if (inEl.value.trim() === "") inputIsMarkdown = false;
+    run();
+  }); // input handler
+
+  // Rich-text paste: pull the HTML flavor off the clipboard and convert it.
+  inEl.addEventListener("paste", e => {
+    const cb = e.clipboardData;
+    if (!cb) return;
+    const html = cb.getData("text/html");
+    if (html && htmlHasFormatting(html)) {
+      e.preventDefault();
+      const md = htmlToMd(html);
+      // insert at cursor, replacing any selection
+      const s = inEl.selectionStart, en = inEl.selectionEnd;
+      const before = inEl.value.slice(0, s), after = inEl.value.slice(en);
+      inEl.value = before + md + after;
+      const pos = before.length + md.length;
+      inEl.selectionStart = inEl.selectionEnd = pos;
+      inputIsMarkdown = true;
+      run();
+    }
+    // else: plain-text paste falls through to default textarea behavior,
+    // and the input event will run the wiki-markup converter.
+  });
+
+  document.querySelectorAll(".seg").forEach(seg => {
+    const side = seg.dataset.side;
+    seg.addEventListener("click", e => {
+      const b = e.target.closest("button"); if (!b) return;
+      seg.querySelectorAll("button").forEach(x => x.classList.toggle("on", x === b));
+      const mode = b.dataset.mode;
+      if (side === "jira") {
+        inEl.classList.toggle("hidden", mode !== "src");
+        document.getElementById("jiraPreview").classList.toggle("hidden", mode !== "preview");
+      } else {
+        document.getElementById("mdSrcView").classList.toggle("hidden", mode !== "src");
+        document.getElementById("mdPreview").classList.toggle("hidden", mode !== "preview");
+      }
+    });
+  });
+
+  document.getElementById("clear").addEventListener("click", () => { inEl.value = ""; inputIsMarkdown = false; run(); inEl.focus(); });
+
+  const copyBtn = document.getElementById("copy");
+  function flashCopied(ok) {
+    copyBtn.textContent = ok ? "Copied" : "Press ⌘/Ctrl+C";
+    copyBtn.classList.toggle("done", ok);
+    setTimeout(() => { copyBtn.textContent = "Copy"; copyBtn.classList.remove("done"); }, 1400);
+  }
+  copyBtn.addEventListener("click", async () => {
+    const text = currentMd;            // always the Markdown, never the rendered HTML
+    if (!text) { flashCopied(false); return; }
+    // Preferred: async clipboard API.
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      try { await navigator.clipboard.writeText(text); flashCopied(true); return; }
+      catch (e) { /* fall through to legacy path */ }
+    }
+    // Fallback that works even when the Source view is hidden: copy from a
+    // temporary off-screen textarea rather than the (possibly display:none) #mdSrc.
+    const tmp = document.createElement("textarea");
+    tmp.value = text;
+    tmp.setAttribute("readonly", "");
+    tmp.style.cssText = "position:fixed;top:0;left:-9999px;opacity:0;";
+    document.body.appendChild(tmp);
+    tmp.select();
+    let ok = false;
+    try { ok = document.execCommand("copy"); } catch (e) { ok = false; }
+    document.body.removeChild(tmp);
+    flashCopied(ok);
+  });
+
+  const EXAMPLE = [
+    "h1. Release Notes",
+    "",
+    "h2. Summary",
+    "We shipped *bold improvements* to the _checkout_ flow. See [the spec|https://example.com/spec].",
+    "",
+    "h3. Changes",
+    "* Fixed -broken- payment retries",
+    "* Added {{X-Trace-Id}} header",
+    "** sub-item with detail",
+    "# First ordered step",
+    "# Second ordered step",
+    "",
+    "||Field||Before||After||",
+    "|Latency|800ms|120ms|",
+    "|Errors|3.1%|0.2%|",
+    "",
+    "{quote}",
+    "Performance is a feature.",
+    "{quote}",
+    "",
+    "{warning}",
+    "Run the migration before deploying.",
+    "{warning}",
+    "",
+    "{code:java}",
+    "public void retry() {",
+    "    backoff.next();",
+    "}",
+    "{code}",
+    "",
+    "----",
+    "bq. Generated automatically."
+  ].join("\n");
+
+  document.getElementById("loadex").addEventListener("click", () => { inEl.value = EXAMPLE; inputIsMarkdown = false; run(); inEl.scrollTop = 0; });
+
+  run();
+})();
+</script>
+</body>
+</html>
